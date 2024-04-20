@@ -18,7 +18,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": [
+        "@cloudflare/workers-types/2023-07-01"
+    ]
   },
   "include": [
     "src"
