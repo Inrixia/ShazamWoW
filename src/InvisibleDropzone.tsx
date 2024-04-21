@@ -1,10 +1,11 @@
 import React, { useMemo, CSSProperties } from "react";
 import { useDropzone } from "react-dropzone";
 import initShazamio, { DecodedSignature, recognizeBytes } from "shazamio-core/web";
-import { ShazamData } from "./shazamTypes";
+import { ShazamData } from "./types/shazamTypes";
 import Grid from "@mui/material/Grid";
 import Typography from "@mui/material/Typography";
-import { fetchShazamData, using } from "./helpers";
+import { fetchIsrc, fetchShazamData, using } from "./helpers";
+import { ISRCResponse as ISRCData } from "./types/isrcTypes";
 
 const boxStyle: CSSProperties = {
 	borderRadius: 12,
@@ -34,18 +35,20 @@ type ShazamError = {
 	file: File;
 	error: Error;
 	shazamData?: undefined;
+	isrcData?: undefined;
 };
 type ShazamSuccess = {
 	file: File;
 	error?: undefined;
 	shazamData: ShazamData;
+	isrcData?: ISRCData;
 };
 type Shazam = ShazamError | ShazamSuccess;
 
 const InvisibleDropzone = () => {
 	const [shazams, setShazams] = React.useState<Shazam[]>([]);
 	const { getRootProps, getInputProps, isFocused, isDragAccept, isDragReject } = useDropzone({
-		accept: { "audio/*": [] },
+		accept: { "audio/*": [], "video/*": [] },
 		// disabled: shazams.length > 0,
 		onDropAccepted: async (files) => {
 			await initShazamioPromise;
@@ -58,7 +61,12 @@ const InvisibleDropzone = () => {
 								const signature = signatures[i];
 								const shazamData = await fetchShazamData({ samplems: signature.samplems, uri: signature.uri });
 								console.log(`Sig ${i} - ${file.name}`, shazamData, signature);
-								if (shazamData.matches.length > 0) return { file, shazamData };
+								if (shazamData.matches.length > 0) {
+									const isrc = shazamData.track?.isrc;
+									const isrcData = isrc !== undefined ? await fetchIsrc(isrc).catch(() => undefined) : undefined;
+									console.log(`Sig ${i} - ${file.name} MATCHED!`, { file, shazamData, isrcData });
+									return { file, shazamData, isrcData };
+								}
 							}
 							throw new Error("No matches found");
 						});
@@ -108,22 +116,39 @@ const InvisibleDropzone = () => {
 				</Grid>
 				<Grid item xs={12}>
 					<Grid container spacing={2} style={{ padding: 16 }}>
-						{shazams.map(({ shazamData, error, file }, key) => {
+						{shazams.map(({ shazamData, error, file, isrcData }, key) => {
 							if (error) return <h1 style={{ color: "red" }}>{error.message}</h1>;
-							if (shazamData?.track?.albumadamid === undefined) return null;
-							return (
-								<Grid item key={key} xs={4}>
-									<iframe
-										title={file.name}
-										allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
-										frameBorder=""
-										height={450}
-										style={{ width: "100%", maxWidth: "660px", overflow: "hidden", borderRadius: 10 }}
-										sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
-										src={`https://embed.music.apple.com/us/album/${shazamData?.track.albumadamid}`}
-									/>
-								</Grid>
-							);
+							const tidalId = isrcData?.data[0]?.id;
+							if (tidalId !== undefined) {
+								return (
+									<Grid item key={key} xs={4}>
+										<iframe
+											title={file.name}
+											src={`https://embed.tidal.com/tracks/${tidalId}?layout=gridify`}
+											allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write *"
+											frameBorder=""
+											style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: 10 }}
+										/>
+									</Grid>
+								);
+							}
+							const albumadamid = shazamData?.track?.albumadamid;
+							if (albumadamid !== undefined) {
+								return (
+									<Grid item key={key} xs={4}>
+										<iframe
+											title={file.name}
+											allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write *"
+											frameBorder=""
+											height={450}
+											style={{ width: "100%", maxWidth: "660px", overflow: "hidden", borderRadius: 10 }}
+											sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
+											src={`https://embed.music.apple.com/us/album/${albumadamid}`}
+										/>
+									</Grid>
+								);
+							}
+							return <h1 key={key}>{shazamData.track?.title}</h1>;
 						})}
 					</Grid>
 				</Grid>
